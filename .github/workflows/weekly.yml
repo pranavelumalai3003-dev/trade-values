@@ -1,0 +1,68 @@
+# Refreshes data/values_latest.json automatically.
+#
+#  - Tuesday 15:00 UTC (10-11am US Eastern): after Monday Night Football, when stats are final.
+#  - Thursday 15:00 UTC: picks up injury news before the next week's games.
+#  - "Run workflow" button on GitHub (workflow_dispatch) for manual runs.
+#
+# In the offseason build_values.py exits without changing anything, so nothing is committed.
+# If any step fails, GitHub marks the run red and emails you; the old values file stays in place.
+
+name: Weekly trade values
+
+on:
+  schedule:
+    - cron: "0 15 * * 2"   # Tuesday
+    - cron: "0 15 * * 4"   # Thursday
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run even in the offseason"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # lets the job commit the new values back to the repo
+
+concurrency:
+  group: weekly-trade-values
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # League settings (edit to match your league)
+      NUM_TEAMS: "12"
+      PPR: "1"
+      SUPERFLEX: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build trade values
+        run: |
+          if [ "${{ inputs.force }}" = "true" ]; then
+            python build_values.py --force
+          else
+            python build_values.py
+          fi
+
+      - name: Commit updated values
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/values_latest.json data/history/ data/unmatched_players.csv
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Update trade values ($(date -u +%Y-%m-%d))"
+            git push
+          fi

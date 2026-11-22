@@ -1,0 +1,5 @@
+.venv/
+__pycache__/
+*.tmp
+# big downloaded files (re-downloaded automatically)
+data/cache/
